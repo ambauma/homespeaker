@@ -1,0 +1,7 @@
+alarm.mp3
+config.yaml
+dist/*
+homespeaker.egg-info/*
+**/__pycache__/*
+venv/*
+.coverage
