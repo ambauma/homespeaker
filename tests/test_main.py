@@ -23,7 +23,6 @@ class FakeProcess:
 
     def start(self):
         """Simulate starting a process."""
-        print(f"self.args {self.args} bool({bool(self.args)})")
         if self.args:
             self.target(*self.args)
         else:
@@ -69,7 +68,7 @@ def test_wake_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_p
         ]
     )
     expect(sut.subprocess).run(
-        ["xset", "dpms", "force", "on"],
+        ["xset", "s", "reset"],
         shell=True,
         check=True
     ).thenRaise(

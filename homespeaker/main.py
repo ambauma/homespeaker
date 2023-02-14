@@ -121,7 +121,7 @@ class WakeTheSceenAction(Action):  # pylint: disable=too-few-public-methods
 
     def do(self):
         """Wake the screen."""
-        subprocess.run(["xset", "dpms", "force", "on"], shell=True, check=True)
+        subprocess.run(["xset", "s", "reset"], shell=True, check=True)
 
 
 action_registry["wake-screen"] = WakeTheSceenAction()
