@@ -12,15 +12,6 @@ from homespeaker import main as sut
 pytestmark = pytest.mark.usefixtures("unstub")
 # pylint: disable=unused-argument
 
-def test_circle_list():
-    """Test the CircleList class."""
-    circle_list = sut.CircleList((1, 2, 3, 4))
-    assert circle_list.next() == 1
-    assert circle_list.next() == 2
-    assert circle_list.next() == 3
-    assert circle_list.next() == 4
-    assert circle_list.next() == 1
-
 
 class FakeProcess:
     """Fake out Process since that's hard to test."""
@@ -32,7 +23,11 @@ class FakeProcess:
 
     def start(self):
         """Simulate starting a process."""
-        self.target(*self.args)
+        print(f"self.args {self.args} bool({bool(self.args)})")
+        if self.args:
+            self.target(*self.args)
+        else:
+            self.target()
 
     def join(self):
         """Simulated joining the process."""
@@ -61,28 +56,30 @@ def make_time_match_fixture() -> Tuple[int, int]:
     hour = 5 if datetime.now().hour != 5 else 15
     yield minute, hour
 
-def test_light_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_process):
-    """Test the light-screen action when its time to run."""
+def test_wake_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_process):
+    """Test the wake-screen action when its time to run."""
     expect(sut).load_configuration().thenReturn(
         [
             {
                 "cron": {
                     "schedule": f"{datetime.now().minute} {datetime.now().hour} * * *",
-                    "actions": [{"light-screen": {"duration": 8}}],
+                    "actions": ["wake-screen"],
                 }
             },
         ]
     )
-    expect(sut.pyautogui).moveRel(1, 0)
-    expect(sut, times=8).cursor_sleep().thenReturn()
-    expect(sut.pyautogui).moveRel(0, 1)
-    expect(sut.pyautogui).moveRel(-1, 0)
-    expect(sut.pyautogui).moveRel(0, -1).thenRaise(KeyboardInterrupt())
+    expect(sut.subprocess).run(
+        ["xset", "dpms", "force", "on"],
+        shell=True,
+        check=True
+    ).thenRaise(
+        KeyboardInterrupt()
+    )
     sut.homespeaker_entrypoint()
 
 
-def test_light_screen_when_its_not_time(mock_parser: argparse.ArgumentParser, make_time_miss):
-    """Test the light-screen action when its not time to run."""
+def test_wake_screen_when_its_not_time(mock_parser: argparse.ArgumentParser, make_time_miss):
+    """Test the wake-screen action when its not time to run."""
     minute = make_time_miss[0]
     hour = make_time_miss[1]
     expect(sut).load_configuration().thenReturn(
@@ -90,7 +87,7 @@ def test_light_screen_when_its_not_time(mock_parser: argparse.ArgumentParser, ma
             {
                 "cron": {
                     "schedule": f"{minute} {hour} * * *",
-                    "actions": [{"light-screen": {"duration": "8"}}],
+                    "actions": ["wake-screen"],
                 }
             },
         ]
