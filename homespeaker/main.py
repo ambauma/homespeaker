@@ -3,40 +3,25 @@ import argparse
 import datetime
 import time
 import os
+import subprocess
 from multiprocessing import Process
 from typing import Sequence, Dict, Any
 import yaml
-import pyautogui
 from playsound import playsound
 
 
-class CircleList:  # pylint: disable=too-few-public-methods
-    """A datastructure that lets you call next continously."""
-
-    def __init__(self, elements: Sequence):
-        """Create a CircleList object."""
-        self.elements = elements
-        self.i = 0
-
-    def next(self):
-        """Return the next element in the sequence."""
-        try:
-            element = self.elements[self.i]
-            self.i = self.i + 1
-        except IndexError:
-            self.i = 0
-            element = self.elements[self.i]
-        return element
-
 action_registry = {}
 
-class Action():  # pylint: disable=too-few-public-methods
+
+class Action:  # pylint: disable=too-few-public-methods
     """Concerns itself with doing some thing."""
 
     def __init__(self):
         """Create the action object."""
+
     def do(self):  # pylint: disable=invalid-name
         """Do the action."""
+
 
 def interpret_configuration(config: Dict[str, Any]) -> Sequence[Action]:
     """Change the configuration into a context."""
@@ -48,9 +33,11 @@ def interpret_configuration(config: Dict[str, Any]) -> Sequence[Action]:
             action_schedulers.append(action_scheduler)
     return action_schedulers
 
+
 def loop_sleep():
     """Let the computer do something else."""
     time.sleep(1)
+
 
 def homespeaker_entrypoint():
     """Entrypoint to start homespeaker."""
@@ -68,14 +55,20 @@ def homespeaker_entrypoint():
     except KeyboardInterrupt:
         pass
 
+
 def load_configuration() -> Dict[str, Any]:
     """Load the configuration file if it exists."""
     if os.environ.get("XDG_CONFIG_HOME"):
-        config_path = os.path.join(os.environ.get("XDG_CONFIG_HOME"), "homespeaker", "config.yaml")
+        config_path = os.path.join(
+            os.environ.get("XDG_CONFIG_HOME"), "homespeaker", "config.yaml"
+        )
     else:
-        config_path = os.path.join(os.environ.get("HOME"), ".config", "homespeaker", "config.yaml")
+        config_path = os.path.join(
+            os.environ.get("HOME"), ".config", "homespeaker", "config.yaml"
+        )
     with open(config_path, "r", encoding="utf8") as f:  # pylint: disable=invalid-name
         return yaml.safe_load(f)
+
 
 class CronActionScheduler(Action):  # pylint: disable=too-few-public-methods
     """Handle the schedule of other actions with a cron-like syntax."""
@@ -89,11 +82,15 @@ class CronActionScheduler(Action):  # pylint: disable=too-few-public-methods
         self.day_of_month = day_of_month
         self.day_of_week = day_of_week
         self.actions = []
-        for i, action_list in enumerate(config["actions"]):
-            for action_key in action_list:
-                action_impl = action_registry[action_key]
-                action_obj = action_impl(config["actions"][i][action_key])
-                self.actions.append(action_obj)
+        for i, action_entry in enumerate(config["actions"]):
+            if isinstance(action_entry, dict):
+                for action_key in action_entry:
+                    action_impl = action_registry[action_key]
+                    action_obj = action_impl(config["actions"][i][action_key])
+                    self.actions.append(action_obj)
+            else:
+                self.actions.append(action_registry[action_entry])
+
     def do(self):
         """Do the action."""
         now = datetime.datetime.now()
@@ -104,43 +101,31 @@ class CronActionScheduler(Action):  # pylint: disable=too-few-public-methods
                     process.start()
                 process.join()
 
+
 action_registry["cron"] = CronActionScheduler
+
 
 def homespeaker(context: Sequence[Action]):
     """Do homespeaker things."""
     for action_scheduler in context:
         action_scheduler.do()
 
+
 def cursor_sleep():
     """Sleep between cursor movements."""
     time.sleep(1)
 
-class KeepTheSceenAliveAction(Action):  # pylint: disable=too-few-public-methods
-    """Action to keep the screen alive."""
 
-    def __init__(self, config: Dict[str, Any]):
-        """Create an object instance."""
-        self.duration = config["duration"]
+class WakeTheSceenAction(Action):  # pylint: disable=too-few-public-methods
+    """Action to wake the screen."""
+
     def do(self):
-        """
-        Keep the screen alive.
+        """Wake the screen."""
+        subprocess.run(["xset", "dpms", "force", "on"], shell=True, check=True)
 
-        @param duration: The duration in seconds to keep the screen alive.
-        """
-        current_time = time.time()
-        circle = CircleList(
-            (
-                (1, 0),
-                (0, 1),
-                (-1, 0),
-                (0, -1),
-            )
-        )
-        while current_time + self.duration > time.time():
-            x_coord, y_coord = circle.next()
-            pyautogui.moveRel(x_coord, y_coord)
-            cursor_sleep()
-action_registry["light-screen"] = KeepTheSceenAliveAction
+
+action_registry["wake-screen"] = WakeTheSceenAction()
+
 
 class PlayAudioAction(Action):  # pylint: disable=too-few-public-methods
     """Action to play audio."""
@@ -148,7 +133,7 @@ class PlayAudioAction(Action):  # pylint: disable=too-few-public-methods
     def __init__(self, config: Dict[str, Any]):
         """
         Construct the Action.
-        
+
         @param src:  path to the file to play.
         """
         self.src = config["src"]
@@ -156,4 +141,6 @@ class PlayAudioAction(Action):  # pylint: disable=too-few-public-methods
     def do(self):
         """Play audio of some type."""
         playsound(self.src)
+
+
 action_registry["play-sound"] = PlayAudioAction
