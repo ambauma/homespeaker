@@ -1,7 +1,15 @@
 #!/usr/bin/env bash
 set -e
 
-setup_venv() {
+clean() {
+    rm -rf venv/
+    rm -rf dist/
+    rm -rf homespeaker.egg-info/
+    rm -rf homespeaker/__pycache__/
+    rm -rf tests/__pycache__/
+}
+
+setup() {
     rm -rf venv/
     python3 -m venv venv | python -m venv venv
     source venv/bin/activate

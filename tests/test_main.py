@@ -67,8 +67,9 @@ def test_wake_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_p
             },
         ]
     )
+    expect(sut.os.environ).get("DISPLAY").thenReturn(":0")
     expect(sut.subprocess).run(
-        ["xset", "s", "reset"],
+        ["xset", "-display", ":0", "s", "reset"],
         shell=True,
         check=True
     ).thenRaise(
