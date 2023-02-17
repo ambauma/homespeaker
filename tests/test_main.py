@@ -31,6 +31,7 @@ class FakeProcess:
     def join(self):
         """Simulated joining the process."""
 
+
 @pytest.fixture(name="mock_parser")
 def mock_parser_fixture() -> argparse.ArgumentParser:
     """Define a mock parser"""
@@ -41,6 +42,7 @@ def mock_parser_fixture() -> argparse.ArgumentParser:
     expect(mock_parser).parse_args().thenReturn(Namespace())
     yield mock_parser
 
+
 @pytest.fixture(name="patch_process")
 def patch_process_fixture() -> None:
     """Patch Process to stay in this process."""
@@ -48,15 +50,26 @@ def patch_process_fixture() -> None:
     yield
 
 
-@pytest.fixture(name="make_time_miss")
+@pytest.fixture(name="make_time_match")
 def make_time_match_fixture() -> Tuple[int, int]:
+    """Make time not match so nothing runs."""
+    minute = datetime.now().minute
+    hour = datetime.now().hour
+    yield minute, hour
+
+
+@pytest.fixture(name="make_time_miss")
+def make_time_miss_fixture() -> Tuple[int, int]:
     """Make time not match so nothing runs."""
     minute = 5 if datetime.now().minute != 5 else 55
     hour = 5 if datetime.now().hour != 5 else 15
     yield minute, hour
 
-def test_wake_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_process):
-    """Test the wake-screen action when its time to run."""
+
+def test_wake_screen_when_its_time_x11(
+    mock_parser: argparse.ArgumentParser, patch_process
+):
+    """Test the wake-screen action when its time to run on x11."""
     expect(sut).load_configuration().thenReturn(
         [
             {
@@ -67,20 +80,69 @@ def test_wake_screen_when_its_time(mock_parser: argparse.ArgumentParser, patch_p
             },
         ]
     )
+    expect(sut.os.environ).get("XDG_SESSION_TYPE").thenReturn("x11")
     expect(sut.os.environ).get("DISPLAY").thenReturn(":0")
     expect(sut.subprocess).run(
-        ["xset", "-display", ":0", "s", "reset"],
-        shell=True,
-        check=True
-    ).thenRaise(
-        KeyboardInterrupt()
-    )
+        ["xset", "-display", ":0", "s", "reset"], shell=True, check=True
+    ).thenRaise(KeyboardInterrupt())
     sut.homespeaker_entrypoint()
 
 
-def test_wake_screen_when_its_not_time(mock_parser: argparse.ArgumentParser, make_time_miss):
-    """Test the wake-screen action when its not time to run."""
-    minute = make_time_miss[0]
+def test_wake_screen_when_its_time_wayland(
+    mock_parser: argparse.ArgumentParser, patch_process
+):
+    """Test the wake-screen action when its time to run on wayland."""
+    expect(sut).load_configuration().thenReturn(
+        [
+            {
+                "cron": {
+                    "schedule": f"{datetime.now().minute} {datetime.now().hour} * * *",
+                    "actions": ["wake-screen"],
+                }
+            },
+        ]
+    )
+    expect(sut.os.environ).get("XDG_SESSION_TYPE").thenReturn("wayland")
+    expect(sut.subprocess).run(
+        [
+            "dbus-send",
+            "--session",
+            "--dest=org.gnome.ScreenSaver",
+            "--type=method_call",
+            "/org/gnome/ScreenSaver",
+            "org.gnome.ScreenSaver.SetActive",
+            "boolean:false",
+        ],
+        shell=True,
+        check=True,
+    ).thenRaise(KeyboardInterrupt())
+    sut.homespeaker_entrypoint()
+
+
+def test_wake_screen_when_its_time_tty(
+    mock_parser: argparse.ArgumentParser, patch_process
+):
+    """Test the wake-screen action when its time to run on tty."""
+    expect(sut).load_configuration().thenReturn(
+        [
+            {
+                "cron": {
+                    "schedule": f"{datetime.now().minute} {datetime.now().hour} * * *",
+                    "actions": ["wake-screen"],
+                }
+            },
+        ]
+    )
+    expect(sut.os.environ).get("XDG_SESSION_TYPE").thenReturn("tty")
+    with pytest.raises(EnvironmentError, match="Unsupported display server tty!"):
+        sut.homespeaker_entrypoint()
+
+
+def test_wake_screen_when_its_not_time_minutes(
+    mock_parser: argparse.ArgumentParser, make_time_miss, make_time_match
+):
+    """Test the wake-screen action when its not time to run according to minutes."""
+    minute = make_time_match[0]
     hour = make_time_miss[1]
     expect(sut).load_configuration().thenReturn(
         [
@@ -96,6 +158,29 @@ def test_wake_screen_when_its_not_time(mock_parser: argparse.ArgumentParser, mak
         KeyboardInterrupt()
     )
     sut.homespeaker_entrypoint()
+
+
+def test_wake_screen_when_its_not_time_hours(
+    mock_parser: argparse.ArgumentParser, make_time_miss, make_time_match
+):
+    """Test the wake-screen action when its not time to run according to hours."""
+    minute = make_time_miss[0]
+    hour = make_time_match[1]
+    expect(sut).load_configuration().thenReturn(
+        [
+            {
+                "cron": {
+                    "schedule": f"{minute} {hour} * * *",
+                    "actions": ["wake-screen"],
+                }
+            },
+        ]
+    )
+    expect(sut.time, times=4).sleep(1).thenReturn().thenReturn().thenReturn().thenRaise(
+        KeyboardInterrupt()
+    )
+    sut.homespeaker_entrypoint()
+
 
 def test_play_sound_when_its_time(mock_parser: argparse.ArgumentParser, patch_process):
     """Test the play-sound action when its time to run."""
@@ -114,7 +199,9 @@ def test_play_sound_when_its_time(mock_parser: argparse.ArgumentParser, patch_pr
     sut.homespeaker_entrypoint()
 
 
-def test_play_sound_when_its_not_time(mock_parser: argparse.ArgumentParser, make_time_miss):
+def test_play_sound_when_its_not_time(
+    mock_parser: argparse.ArgumentParser, make_time_miss
+):
     """Test the play-sound action when its not time to run."""
     minute = make_time_miss[0]
     hour = make_time_miss[1]
@@ -133,6 +220,7 @@ def test_play_sound_when_its_not_time(mock_parser: argparse.ArgumentParser, make
     )
     sut.homespeaker_entrypoint()
 
+
 def test_loop_sleep():
     """Test the loop_sleep function that exists to allow easier testing."""
     before = time()
@@ -140,25 +228,30 @@ def test_loop_sleep():
     after = time()
     assert int(after - before) == 1
 
+
 def test_load_configuration_with_home_ev(tmp_path: pathlib.Path):
     """Test the load_configuration function with a HOME environment variable."""
     config_dir = tmp_path / ".config" / "homespeaker/"
     config_dir.mkdir(parents=True)
     config_file_path = config_dir / "config.yaml"
-    with open(config_file_path, "w", encoding="utf8") as f:  # pylint:disable=invalid-name
-        f.write((
-            "---\n"
-            "- cron:\n"
-            "    schedule: 20 21 * * *\n"
-            "    actions:\n"
-            "      - light-screen:\n"
-            "          duration: 8\n"
-            "- cron:\n"
-            "    schedule: 20 21 * * *\n"
-            "    actions:\n"
-            "      - play-sound:\n"
-            "          src: alarm.mp3\n"
-        ))
+    with open(
+        config_file_path, "w", encoding="utf8"
+    ) as f:  # pylint:disable=invalid-name
+        f.write(
+            (
+                "---\n"
+                "- cron:\n"
+                "    schedule: 20 21 * * *\n"
+                "    actions:\n"
+                "      - light-screen:\n"
+                "          duration: 8\n"
+                "- cron:\n"
+                "    schedule: 20 21 * * *\n"
+                "    actions:\n"
+                "      - play-sound:\n"
+                "          src: alarm.mp3\n"
+            )
+        )
     expect(sut.os.environ).get("XDG_CONFIG_HOME").thenReturn(None)
     expect(sut.os.environ).get("HOME").thenReturn(tmp_path)
     result = sut.load_configuration()
@@ -177,25 +270,30 @@ def test_load_configuration_with_home_ev(tmp_path: pathlib.Path):
         },
     ]
 
+
 def test_load_configuration_with_xdg_home(tmp_path: pathlib.Path):
     """Test the load_configuration function with XDG_CONFIG_HOME environment variable."""
     config_dir = tmp_path / "homespeaker/"
     config_dir.mkdir(parents=True)
     config_file_path = config_dir / "config.yaml"
-    with open(config_file_path, "w", encoding="utf8") as f:  # pylint:disable=invalid-name
-        f.write((
-            "---\n"
-            "- cron:\n"
-            "    schedule: 20 21 * * *\n"
-            "    actions:\n"
-            "      - light-screen:\n"
-            "          duration: 8\n"
-            "- cron:\n"
-            "    schedule: 20 21 * * *\n"
-            "    actions:\n"
-            "      - play-sound:\n"
-            "          src: alarm.mp3\n"
-        ))
+    with open(
+        config_file_path, "w", encoding="utf8"
+    ) as f:  # pylint:disable=invalid-name
+        f.write(
+            (
+                "---\n"
+                "- cron:\n"
+                "    schedule: 20 21 * * *\n"
+                "    actions:\n"
+                "      - light-screen:\n"
+                "          duration: 8\n"
+                "- cron:\n"
+                "    schedule: 20 21 * * *\n"
+                "    actions:\n"
+                "      - play-sound:\n"
+                "          src: alarm.mp3\n"
+            )
+        )
     expect(sut.os.environ, times=2).get("XDG_CONFIG_HOME").thenReturn(tmp_path)
     result = sut.load_configuration()
     assert result == [
@@ -212,6 +310,7 @@ def test_load_configuration_with_xdg_home(tmp_path: pathlib.Path):
             }
         },
     ]
+
 
 def test_cursor_sleep():
     """Test the cursor_sleep function that exists to allow easier testing."""
