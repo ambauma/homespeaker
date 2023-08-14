@@ -3,7 +3,7 @@ set -e
 
 setup() {
     rm -rf venv/
-    python3 -m venv venv | python -m venv venv
+    python3 -m venv venv
     source venv/bin/activate
     pip install --upgrade pip wheel setuptools
     pip install --editable .[TEST]
